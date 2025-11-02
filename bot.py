@@ -32,28 +32,28 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 def get_health_advice(temp, feels_like, main_weather_en, humidity):
     advice_list = []
     if main_weather_en == "Thunderstorm":
-        advice_list.append("พายุฝนฟ้าคะนอง! 🌩️ ควรหลบอยู่ในอาคารที่ปลอดภัย")
+        advice_list.append("ฝนตกหนัก หากเดินทางด้วยรถจักรยานยนต์ ควรจอดพักรอฝนก่อนดีกว่า ")
     elif main_weather_en == "Rain" or main_weather_en == "Drizzle":
-        advice_list.append("ฝนตก ☔ พกร่มหรือเสื้อกันฝน ระวังถนนลื่น")
+        advice_list.append("ฝนตก อย่าลืมพกร่มและเสื้อกันฝนล่ะ ระวังเป็นไข้นะ! ")
     
     if feels_like >= 40:
-        advice_list.append("อากาศร้อนจัด (อันตราย)! 🥵 เสี่ยง Heat Stroke สูงมาก ดื่มน้ำทุกชั่วโมง!")
+        advice_list.append("โห!อากาศร้อนมากเลยนั่นน่ะ อย่าลืมดื่่มน้ำและอย่าพยายามออกไปที่โล่งนะ ")
     elif feels_like >= 35:
-        advice_list.append("อากาศร้อน! 🔥 ดื่มน้ำบ่อยๆ หากอยู่กลางแจ้ง สวมหมวก")
+        advice_list.append("อากาศร้อนเลยนะ ดื่มน้ำเยอะๆ และอย่าลืมทาครีมกันแดดนะ ")
     
     if temp <= 20:
-        advice_list.append("อากาศหนาวเย็น 🧣 สวมเสื้อคลุมหรือเสื้อกันหนาว")
+        advice_list.append("อากาศหนาวมากเลย ใส่เสื้อหนาๆ ทำให้ร่างกายอบอุ่นเข้าไว้นะ ")
     elif temp <= 23:
-         advice_list.append("อากาศเย็นสบาย 😌")
+         advice_list.append("อากาศกำลังเย็นสบายเลย น่านอนนะว่ามั้ย ")
 
     if humidity > 80 and feels_like >= 32 and not any("ร้อน" in s for s in advice_list):
-        advice_list.append("อากาศร้อนและชื้น (อบอ้าว) 💧 พยายามอยู่ในที่อากาศถ่ายเท")
+        advice_list.append("อากาศอบอ้าว อย่าสวมเสื้อหนาเกินไปล่ะ และอยู่ในที่อากาศถ่ายเทด้วยนะ ")
 
     if main_weather_en == "Clear" and not advice_list:
-        advice_list.append("ท้องฟ้าแจ่มใส ☀️ เหมาะกับการทำกิจกรรม")
+        advice_list.append("อากาศดี ท้องฟ้าสดใสมาก ออกไปทำกิจกรรมกันเถอะ ")
 
     if not advice_list:
-        return "อากาศอยู่ในเกณฑ์ปกติ รักษาสุขภาพครับ 👍"
+        return "อากาศปกติครับ รักษาสุขภาพด้วยนะ "
     else:
         return "\n".join(f"- {advice}" for advice in advice_list)
 
@@ -156,3 +156,4 @@ else:
         print("Error: ใส่ Bot Token ไม่ถูกต้อง หรือ Token ผิด")
     except Exception as e:
         print(f"เกิดข้อผิดพลาดในการรันบอท: {e}")
+
