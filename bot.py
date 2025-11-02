@@ -7,7 +7,6 @@ from datetime import datetime, timezone, timedelta
 from flask import Flask
 from threading import Thread
 
-# (ส่วนของ Flask สำหรับ Host 24/7)
 app = Flask('')
 @app.route('/')
 def home():
@@ -18,17 +17,14 @@ def keep_alive():
     t = Thread(target=run_flask)
     t.start()
 
-# ----------------- (1) ตั้งค่า -----------------
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 OWM_API_KEY = os.environ.get('OWM_API_KEY')
 
 intents = discord.Intents.default()
-# *** (เพิ่มบรรทัดนี้!) ***
-intents.members = True # <<< เปิดสิทธิ์ในการเข้าถึงข้อมูลสมาชิก (จำเป็นสำหรับนับคน)
+intents.members = True 
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ----------------- (2) ฟังก์ชันคำแนะนำสุขภาพ (เกณฑ์ประเทศไทย) -----------------
 def get_health_advice(temp, feels_like, main_weather_en, humidity):
     advice_list = []
     if main_weather_en == "Thunderstorm":
@@ -156,4 +152,5 @@ else:
         print("Error: ใส่ Bot Token ไม่ถูกต้อง หรือ Token ผิด")
     except Exception as e:
         print(f"เกิดข้อผิดพลาดในการรันบอท: {e}")
+
 
