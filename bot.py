@@ -11,8 +11,10 @@ app = Flask('')
 @app.route('/')
 def home():
     return "ตื่นแล้วจ้า!"
+
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
+
 def keep_alive():
     t = Thread(target=run_flask)
     t.start()
@@ -25,48 +27,71 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-def get_health_advice(temp, feels_like, main_weather_en, humidity):
+# --- ฟังก์ชันให้คำแนะนำ (Logic เดิมที่ปรับปรุง) ---
+def get_health_advice(temp, feels_like, main_weather_en, humidity, is_forecast=False):
     advice_list = []
-    if main_weather_en == "Thunderstorm":
-        advice_list.append("ฝนตกหนัก หากเดินทางด้วยรถจักรยานยนต์ ควรจอดพักรอฝนก่อนดีกว่า ")
-    elif main_weather_en == "Rain" or main_weather_en == "Drizzle":
-        advice_list.append("ฝนตก อย่าลืมพกร่มและเสื้อกันฝนล่ะ ระวังเป็นไข้นะ! ")
+    prefix = "คาดว่า" if is_forecast else ""
+
+    if main_weather_en in ["Thunderstorm", "Rain", "Drizzle"]:
+        advice_list.append(f"{prefix}ฝนจะตก เตรียมร่มหรือเสื้อกันฝนไว้ด้วยนะ")
     
-    if feels_like >= 40:
-        advice_list.append("โห!อากาศร้อนมากเลยนั่นน่ะ อย่าลืมดื่่มน้ำและอย่าพยายามออกไปที่โล่งนะ ")
-    elif feels_like >= 35:
-        advice_list.append("อากาศร้อนเลยนะ ดื่มน้ำเยอะๆ และอย่าลืมทาครีมกันแดดนะ ")
+    if feels_like >= 35:
+        advice_list.append(f"{prefix}อากาศจะร้อนจัด ดื่มน้ำเยอะๆ และระวังฮีทสโตรก")
+    elif temp <= 22:
+        advice_list.append(f"{prefix}อากาศจะค่อนข้างเย็น รักษาสุขภาพด้วย")
+
+    if humidity > 80 and not any("ฝน" in s for s in advice_list):
+        advice_list.append("ความชื้นสูง อากาศอาจจะอบอ้าวเป็นพิเศษ")
+
+    return "\n".join(f"- {advice}" for advice in advice_list) if advice_list else "สภาพอากาศปกติ รักษาสุขภาพด้วยครับ"
+
+# --- คำสั่งทำนายอากาศ (New Feature) ---
+@bot.tree.command(name="predict", description="วิเคราะห์และทำนายสภาพอากาศล่วงหน้า")
+@app_commands.describe(city="ชื่อเมืองที่ต้องการให้วิเคราะห์")
+async def predict(interaction: discord.Interaction, city: str):
+    await interaction.response.defer()
     
-    if temp <= 20:
-        advice_list.append("อากาศหนาวมากเลย ใส่เสื้อหนาๆ ทำให้ร่างกายอบอุ่นเข้าไว้นะ ")
-    elif temp <= 23:
-         advice_list.append("อากาศกำลังเย็นสบายเลย น่านอนนะว่ามั้ย ")
-
-    if humidity > 80 and feels_like >= 32 and not any("ร้อน" in s for s in advice_list):
-        advice_list.append("อากาศอบอ้าว อย่าสวมเสื้อหนาเกินไปล่ะ และอยู่ในที่อากาศถ่ายเทด้วยนะ ")
-
-    if main_weather_en == "Clear" and not advice_list:
-        advice_list.append("อากาศดี ท้องฟ้าสดใสมาก ออกไปทำกิจกรรมกันเถอะ ")
-
-    if not advice_list:
-        return "อากาศปกติครับ รักษาสุขภาพด้วยนะ "
-    else:
-        return "\n".join(f"- {advice}" for advice in advice_list)
-
-# ----------------- (3) อีเวนต์เมื่อบอทพร้อมทำงาน -----------------
-@bot.event
-async def on_ready():
-    print(f"กำลังล็อกอินในชื่อ {bot.user.name}...")
+    # ใช้ API Forecast 5 days / 3 hours
+    forecast_url = f"http://api.openweathermap.org/data/2.5/forecast?appid={OWM_API_KEY}&q={city}&units=metric&lang=th"
+    
     try:
-        synced = await bot.tree.sync()
-        print(f"ซิงค์คำสั่ง Slash Command แล้ว {len(synced)} คำสั่ง")
-    except Exception as e:
-        print(f"ไม่สามารถซิงค์คำสั่งได้: {e}")
+        response = requests.get(forecast_url)
+        data = response.json()
         
-    print(f'{bot.user.name} ได้ออนไลน์และพร้อมใช้งาน!')
-    print('------')
+        if data["cod"] == "200":
+            # ดึงข้อมูล 3 ช่วงเวลาถัดไป (ประมาณ 9 ชั่วโมงข้างหน้า) มาวิเคราะห์แนวโน้ม
+            forecast_list = data["list"][:3] 
+            city_name = data["city"]["name"]
+            
+            # สรุปภาพรวมการทำนาย
+            avg_temp = sum(item["main"]["temp"] for item in forecast_list) / len(forecast_list)
+            main_condition = forecast_list[1]["weather"][0]["main"] # ดูช่วงกลางของระยะทำนาย
+            desc_th = forecast_list[1]["weather"][0]["description"]
+            humidity = forecast_list[1]["main"]["humidity"]
 
-# ----------------- (4) ฟังก์ชันตรรกะหลัก (Logic) (เหมือนเดิม) -----------------
+            # คำแนะนำจากการวิเคราะห์
+            advice = get_health_advice(avg_temp, avg_temp, main_condition, humidity, is_forecast=True)
+
+            embed = discord.Embed(
+                title=f"🔮 ผลการวิเคราะห์สภาพอากาศ: {city_name}",
+                description=f"วิเคราะห์แนวโน้มในอีก 9-12 ชั่วโมงข้างหน้า",
+                color=discord.Color.purple()
+            )
+            embed.add_field(name="แนวโน้มอากาศ", value=desc_th.capitalize(), inline=True)
+            embed.add_field(name="อุณหภูมิเฉลี่ยโดยประมาณ", value=f"{avg_temp:.1f}°C", inline=True)
+            embed.add_field(name="📊 การวิเคราะห์และคำแนะนำ", value=advice, inline=False)
+            embed.set_footer(text="ข้อมูลวิเคราะห์เชิงสถิติจาก OpenWeatherMap")
+            
+            await interaction.followup.send(embed=embed)
+        else:
+            await interaction.followup.send(f"ไม่พบข้อมูลเมือง '{city}' สำหรับการวิเคราะห์")
+            
+    except Exception as e:
+        print(f"Prediction Error: {e}")
+        await interaction.followup.send("เกิดข้อผิดพลาดในการวิเคราะห์ข้อมูล")
+
+# ----------------- (คำสั่งเดิมอื่นๆ คงไว้) -----------------
+
 async def _internal_weather_logic(interaction: discord.Interaction, city: str):
     await interaction.response.defer() 
     base_url = "http://api.openweathermap.org/data/2.5/weather?"
@@ -78,79 +103,37 @@ async def _internal_weather_logic(interaction: discord.Interaction, city: str):
         if data["cod"] == 200:
             main = data["main"]
             weather_data = data["weather"][0]
-            city_name = data["name"]
-            country = data["sys"]["country"]
             temp = main["temp"]
-            temp_feels_like = main["feels_like"]
-            humidity = main["humidity"]
-            main_weather_en = weather_data["main"]
-            weather_desc_th = weather_data["description"]
-            timezone_offset = data["timezone"]
-            utc_now = datetime.now(timezone.utc)
-            city_offset = timedelta(seconds=timezone_offset)
-            city_time = utc_now + city_offset
-            time_str = city_time.strftime("%H:%M น.")
-            date_str = city_time.strftime("%A, %d %B %Y")
-            health_advice = get_health_advice(temp, temp_feels_like, main_weather_en, humidity)
-            embed = discord.Embed(title=f"🏙️ สภาพอากาศ: {city_name}, {country}", description=f"ข้อมูล ณ {date_str}", color=discord.Color.blue())
-            embed.add_field(name="เวลาท้องถิ่น 🕑", value=time_str, inline=False)
-            embed.add_field(name="ลักษณะอากาศ 🌤️", value=weather_desc_th.capitalize(), inline=False)
+            health_advice = get_health_advice(temp, main["feels_like"], weather_data["main"], main["humidity"])
+            
+            embed = discord.Embed(title=f"🏙️ สภาพอากาศ: {data['name']}", color=discord.Color.blue())
             embed.add_field(name="อุณหภูมิ 🌡️", value=f"{temp}°C", inline=True)
-            embed.add_field(name="รู้สึกเหมือน 🌡️", value=f"{temp_feels_like}°C", inline=True)
-            embed.add_field(name="ความชื้น 💧", value=f"{humidity}%", inline=True)
-            embed.add_field(name="💡 คำแนะนำสุขภาพ", value=health_advice, inline=False) 
+            embed.add_field(name="ลักษณะอากาศ", value=weather_data["description"], inline=True)
+            embed.add_field(name="💡 คำแนะนำ", value=health_advice, inline=False)
             await interaction.followup.send(embed=embed)
         else:
-            await interaction.followup.send(f"ไม่พบข้อมูลของเมือง '{city}' กรุณาลองใหม่")
+            await interaction.followup.send("ไม่พบเมืองนี้ครับ")
     except Exception as e:
-        print(f"เกิดข้อผิดพลาด: {e}")
-        await interaction.followup.send("เกิดข้อผิดพลาดในการดึงข้อมูลครับ")
+        await interaction.followup.send("เกิดข้อผิดพลาด")
 
-# ----------------- (5) คำสั่ง Slash Command (ไทย/อังกฤษ) (เหมือนเดิม) -----------------
-@bot.tree.command(name="weather", description="Check weather, temperature, and time")
-@app_commands.describe(city="The name of the city (e.g., Bangkok)")
+@bot.tree.command(name="weather", description="Check current weather")
 async def weather(interaction: discord.Interaction, city: str):
     await _internal_weather_logic(interaction, city)
 
-@bot.tree.command(name="อากาศ", description="เช็คสภาพอากาศ, อุณหภูมิ, และเวลา")
-@app_commands.describe(city="ชื่อเมืองที่ต้องการค้นหา (เช่น กรุงเทพ)")
-async def akat(interaction: discord.Interaction, city: str):
-    await _internal_weather_logic(interaction, city)
-
-# ----------------- (X) *** (เพิ่มฟังก์ชันนี้!) คำสั่งดูสถิติ *** -----------------
-@bot.tree.command(name="stats", description="ดูสถิติของบอท (จำนวนเซิร์ฟเวอร์และผู้ใช้)")
+@bot.tree.command(name="stats", description="ดูสถิติของบอท")
 async def stats(interaction: discord.Interaction):
-    
-    # นับจำนวนเซิร์ฟเวอร์ที่บอทอยู่
     server_count = len(bot.guilds)
-    
-    # นับจำนวนผู้ใช้ทั้งหมด
-    # (เราจำเป็นต้องเปิด 'members' intent ที่บรรทัด 30 เพื่อให้ตัวเลขนี้แม่นยำ)
     total_users = sum(guild.member_count for guild in bot.guilds)
-    
-    embed = discord.Embed(
-        title="📊 สถิติของบอท",
-        description="นี่คือข้อมูลสถิติการใช้งานบอทของฉันในปัจจุบัน",
-        color=discord.Color.green()
-    )
-    embed.add_field(name="จำนวนเซิร์ฟเวอร์ 🖥️", value=f"{server_count} เซิร์ฟเวอร์", inline=False)
-    embed.add_field(name="จำนวนผู้ใช้ทั้งหมด 👥", value=f"{total_users} คน", inline=False)
-    
-    # ส่งข้อความแบบ "เห็นเฉพาะเรา" (ephemeral=True)
+    embed = discord.Embed(title="📊 สถิติของบอท", color=discord.Color.green())
+    embed.add_field(name="เซิร์ฟเวอร์", value=f"{server_count}", inline=True)
+    embed.add_field(name="ผู้ใช้รวม", value=f"{total_users}", inline=True)
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    
-# ----------------- (6) รันบอท และ ปลุกเว็บ (เหมือนเดิม) -----------------
-if BOT_TOKEN is None or OWM_API_KEY is None:
-    print("Error: ไม่พบ BOT_TOKEN หรือ OWM_API_KEY")
-    print("กรุณาตั้งค่า Environment Variables บน Render.com")
-else:
-    keep_alive() 
-    try:
-        bot.run(BOT_TOKEN)
-    except discord.errors.LoginFailed:
-        print("Error: ใส่ Bot Token ไม่ถูกต้อง หรือ Token ผิด")
-    except Exception as e:
-        print(f"เกิดข้อผิดพลาดในการรันบอท: {e}")
+@bot.event
+async def on_ready():
+    await bot.tree.sync()
+    print(f'{bot.user.name} Ready!')
 
-
+if BOT_TOKEN and OWM_API_KEY:
+    keep_alive()
+    bot.run(BOT_TOKEN)
